@@ -229,10 +229,10 @@ int create_connection(){
 int check_ipversion(char * addr){
     struct in6_addr bindaddr;
 
-    if(inet_pton(AF_INET, address, &bindaddr) == 1){
+    if(inet_pton(AF_INET, addr, &bindaddr) == 1){
         return AF_INET;
     }else{
-        if(inet_pton(AF_INET6, address, &bind_addr) == 1){
+        if(inet_pton(AF_INET6, addr, &bind_addr) == 1){
             return AF_INET6;
         }
     }
