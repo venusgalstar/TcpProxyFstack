@@ -9,7 +9,11 @@
 #define BUF_SIZE 16384
 
 int parse_options(int argc, char *argv[]);
+int create_connection();
 void server_loop();
+void handle_client(int client_sock, struct sockaddr_storage client_addr);
+void forward_data(int source_sock, int dest_sock);
+void forward_data_ext(int source_sock, int dest_sock, char *cmd);
 
 char *bind_addr, *remote_host, *cmd_in, *cmd_out;
 int remote_port = 0, server_sock, client_sock, remote_sock;
@@ -220,4 +224,17 @@ int create_connection(){
     }
 
     return sock;
+}
+
+int check_ipversion(char * addr){
+    struct in6_addr bindaddr;
+
+    if(inet_pton(AF_INET, address, &bindaddr) == 1){
+        return AF_INET;
+    }else{
+        if(inet_pton(AF_INET6, address, &bind_addr) == 1){
+            return AF_INET6;
+        }
+    }
+    return 0;
 }
