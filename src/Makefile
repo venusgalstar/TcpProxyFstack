@@ -3,5 +3,5 @@ CFLGAS =
 OPTFLAGS = 
 LDFLAGS = 
 
-all: 
+target: 
 	gcc $(CFLAGS) $(OPTFLAGS) -o proxy proxy.c $(LDFLAGS)
