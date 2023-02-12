@@ -34,12 +34,21 @@ int remote_port = 0, server_sock, client_sock, remote_sock;
 int connections_processed = 0;
 bool foreground = false;
 
+// main function of proxy
+// receive parameters from running command for remote host and port, bind addr and port
+
 int main(int argc, char *argv[]){
+
+    // local port for binding
     int local_port;
+
+    // process id of proxy
     pid_t pid;
 
+    // address for binding
     bind_addr = NULL;
 
+    // get local port from running command
     local_port = parse_options(argc, argv);
 
     if( local_port < 0 ){
@@ -100,7 +109,7 @@ int parse_options(int argc, char *argv[]){
             cmd_in = optarg;
             break;
 
-        case '0':
+        case 'o':
             cmd_out = optarg;
             break;
 
