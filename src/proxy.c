@@ -11,9 +11,10 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 #define BUF_SIZE 16384
-#define LOG_CRIT 1
+#define BACKLOG 20
 
 int parse_options(int argc, char *argv[]);
 int create_connection();
@@ -23,6 +24,7 @@ void forward_data(int source_sock, int dest_sock);
 void forward_data_ext(int source_sock, int dest_sock, char *cmd);
 void plog(int priority, const char *format, ...);
 int create_socket(int port);
+int check_ipversion(char * addr);
 
 void sigchld_handler(int signal);
 void sigterm_handler(int signal);
@@ -31,7 +33,6 @@ char *bind_addr, *remote_host, *cmd_in, *cmd_out;
 int remote_port = 0, server_sock, client_sock, remote_sock;
 int connections_processed = 0;
 bool foreground = false;
-bool use_syslog = false;
 
 int main(int argc, char *argv[]){
     int local_port;
@@ -105,10 +106,6 @@ int parse_options(int argc, char *argv[]){
 
         case 'f':
             foreground = true;
-            break;
-        
-        case 's':
-            use_syslog = true;
             break;
 
         default:
@@ -199,11 +196,11 @@ int create_connection(){
 
     memset(&hints, 0x00, sizeof(hints));
     
-    hints.ai_flags = AI_NUMBERICSERV;
+    hints.ai_flags = AI_NUMERICSERV;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    sprintf(poststr, "%d", remote_port);
+    sprintf(portstr, "%d", remote_port);
 
     if(validfamily = check_ipversion(remote_host)){
         hints.ai_family = validfamily;
@@ -212,15 +209,15 @@ int create_connection(){
 
     if( getaddrinfo(remote_host, portstr, &hints, &res) != 0 ){
         errno = EFAULT;
-        return CLIENT_RESOLVE_ERROR;
+        return 1;
     }
 
     if((sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0 ){
-        return CLIENT_SOCKET_ERROR;
+        return 2;
     }
 
     if( connect(sock, res->ai_addr, res->ai_addrlen) < 0 ){
-        return CLIENT_CONNECT_ERROR;
+        return 3;
     }
 
     if( res != NULL ){
@@ -247,13 +244,9 @@ void plog(int priority, const char *format, ...){
     va_list ap;
     va_start(ap, format);
 
-    if( use_syslog){
-        vsyslog(priority, format, ap);
-    }else{
-        vfprintf(stderr, format, ap);
-        fprintf(stderr, "\n");
-    }
-
+    vfprintf(stderr, format, ap);
+    fprintf(stderr, "\n");
+    
     va_end(ap);
 }
 
@@ -276,7 +269,7 @@ int create_socket(int port){
     memset(&hints, 0x00, sizeof(hints));
     server_sock = -1;
 
-    hints.ai_flags = AI_NUMBERICSERV;
+    hints.ai_flags = AI_NUMERICSERV;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
@@ -290,27 +283,27 @@ int create_socket(int port){
         hints.ai_flags |= AI_PASSIVE;
     }
 
-    sprintf(poststr, "%d", port);
+    sprintf(portstr, "%d", port);
 
     if( getaddrinfo(bind_addr, portstr, &hints, &res) != 0 ){
-        return CLIENT_RESOLVE_ERROR;
+        return 1;
     }
 
     if((server_sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
-        return SERVER_SOCKET_ERROR;
+        return 2;
     }
 
     if(setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0){
-        return SERVER_SETSOCKETOPT_ERROR;
+        return 3;
     }
 
     if( bind(server_sock, res->ai_addr, res->ai_addrlen) == -1){
         close(server_sock);
-        return SERVER_BIND_ERROR;
+        return 4;
     }
 
     if( listen(server_sock, BACKLOG) < 0){
-        return SERVER_LISTEN_ERROR;
+        return 5;
     }
 
     if( res!= NULL ){
