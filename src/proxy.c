@@ -9,7 +9,7 @@
 int parse_options(int argc, char *argv[]);
 
 char *bind_addr, *remote_host, *cmd_in, *cmd_out;
-int remote_port;
+int remote_port, server_sock;
 bool foreground = FALSE;
 bool use_syslog = FALSE;
 
@@ -20,6 +20,45 @@ int main(int argc, char *argv[]){
     bind_addr = NULL;
 
     local_port = parse_options(argc, argv);
+
+    if( local_port < 0 ){
+        printf("error on local port %d", local_port);
+        return local_port;
+    }
+
+    if( use_syslog ){
+        openlog("proxy", LOG_PID, LOG_DAEMON);
+    }
+
+    if( (server_sock = create_socket(local_port)) < 0){
+        plog(LOG_CRIT, "cannot run server: %m");
+        return server_sock;
+    }
+
+    signal(SIGCHLD, sigchld_handler);
+    signal(SIGCHLD, sigchld_handler);
+
+    if( foreground ){
+        server_loop();
+    } else {
+        switch(pid = fork()){
+            case 0:
+                server_loop();
+                break;
+            case -1:
+                plog(LOG_CRIT, "cannot daemon runing %m");
+                return pid;
+            default:
+                close(server_sock);
+                break;
+        }
+    }
+
+    if( use_syslog ){
+        closelog();
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int parse_options(int argc, char *argv[]){
