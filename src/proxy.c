@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #define BUF_SIZE 16384
 
