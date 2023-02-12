@@ -36,6 +36,7 @@ bool foreground = false;
 
 // main function of proxy
 // receive parameters from running command for remote host and port, bind addr and port
+// client --- local --- remote
 
 int main(int argc, char *argv[]){
 
@@ -51,20 +52,31 @@ int main(int argc, char *argv[]){
     // get local port from running command
     local_port = parse_options(argc, argv);
 
+    // if command doesn't include local port proxy will be terminated
     if( local_port < 0 ){
-        printf("error on local port %d", local_port);
+        printf("error on local port %d \n", local_port);
         return local_port;
     }
 
+    printf("succeed in parsing parameters from command\n");
+
+    // create socket of binding
     if( (server_sock = create_socket(local_port)) < 0){
         plog(1, "cannot run server: %d", server_sock);
         return server_sock;
     }
 
+    printf("succeed in creating proxy socket\n");
+
+    // return 0;
+
     signal(SIGCHLD, sigchld_handler);
     signal(SIGTERM, sigterm_handler);
 
     if( foreground ){
+        
+        printf("proxy server run as foreground\n");
+
         server_loop();
     } else {
         switch(pid = fork()){
@@ -83,25 +95,33 @@ int main(int argc, char *argv[]){
     return EXIT_SUCCESS;
 }
 
-int parse_options(int argc, char *argv[]){
-    int c, local_port = 0;
+// parse parameters from running command, specified by option
 
-    while((c = getopt(argc, argv, "b:l:h:p:i:o:fs")) != -1 ){
+int parse_options(int argc, char *argv[]){
+    int c = 0, local_port = 0;
+    // c = getopt(argc, argv, "b:l:h:p:i:o:f");
+    printf("%d\n", argc);
+
+    while((c = getopt(argc, argv, "b:l:h:p:i:o:f")) != -1 ){
         switch (c)
         {
-        case 'l':
+        case 'l': // optarg will be local port, string to integer
+            printf(" bind port = %s\n", optarg);
             local_port = atoi(optarg);
             break;
         
-        case 'b':
+        case 'b': // optarg will be bind addr for local
+            printf(" bind addr = %s\n", optarg);
             bind_addr = optarg;
             break;
 
-        case 'h':
+        case 'h': // optarg will be remote addr
+            printf(" remote addr = %s\n", optarg);
             remote_host = optarg;
             break;
 
-        case 'p':
+        case 'p': // optarg will be remote port, string to integer
+            printf(" remote port = %s\n", optarg);
             remote_port = atoi(optarg);
             break;
 
@@ -113,7 +133,8 @@ int parse_options(int argc, char *argv[]){
             cmd_out = optarg;
             break;
 
-        case 'f':
+        case 'f': // proxy will be running as foreground
+            printf(" proxy run as foreground\n");
             foreground = true;
             break;
 
@@ -121,39 +142,53 @@ int parse_options(int argc, char *argv[]){
             break;
         }
     }
+
+    return local_port;
 }
 
 void update_connection_count(){
     
 }
 
+// proxy loop, accepting connection from client and forward to remote
 void server_loop(){
     struct sockaddr_storage client_addr;
     socklen_t addrlen = sizeof(client_addr);
 
     while(1){
         update_connection_count();
+
+        printf("listenning connection from client\n");
         client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addrlen);
 
+        printf("accepted connection from client\n");
+
         if( fork() == 0 ){
+
+            printf("succed in fork\n");
             close(server_sock);
             handle_client(client_sock, client_addr);
             exit(0);
         }else{
+
+            printf("succed in background\n");
             connections_processed++;
         }
         close(client_sock);
     }
 }
 
+// data switching function
 void handle_client(int client_sock, struct sockaddr_storage client_addr){
     
+    // creating a socket to remote
     if((remote_sock = create_connection()) < 0 ){
         plog(2, "Cannot connect to host %d", remote_sock);
         goto cleanup;
     }
 
     if( fork() == 0 ){
+        // proxy run as foreground and send data from client to remote
         if(cmd_out){
             forward_data_ext(client_sock, remote_sock, cmd_out);
         }else{
@@ -163,6 +198,7 @@ void handle_client(int client_sock, struct sockaddr_storage client_addr){
     }
 
     if( fork() == 0 ){
+        // proxy run as foreground and send data from remote to client
         if(cmd_in){
             forward_data_ext(remote_sock, client_sock, cmd_in);
         } else{
@@ -177,8 +213,9 @@ cleanup:
 }
 
 void forward_data(int source_sock, int dest_sock){
-    ssize_t n;
 
+    // initializing buffer to recv data from apart, buf is 16KB limited.
+    ssize_t n;
     char buffer[BUF_SIZE];
 
     while((n = recv(source_sock, buffer, BUF_SIZE, 0)) > 0){
@@ -197,20 +234,24 @@ void forward_data_ext(int source_sock, int dest_sock, char *cmd){
     int n;
 }
 
+// create a socket to remote
 int create_connection(){
     struct addrinfo hints, *res=NULL;
     int sock;
     int validfamily = 0;
     char portstr[12];
 
+    // initializing memory
     memset(&hints, 0x00, sizeof(hints));
     
     hints.ai_flags = AI_NUMERICSERV;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
+    // initializing port from running command
     sprintf(portstr, "%d", remote_port);
 
+    // check version of remote addr
     if(validfamily = check_ipversion(remote_host)){
         hints.ai_family = validfamily;
         hints.ai_flags |= AI_NUMERICHOST;
@@ -221,10 +262,12 @@ int create_connection(){
         return 1;
     }
 
+    // create a socket to remote addr/port
     if((sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0 ){
         return 2;
     }
 
+    // trying to connect
     if( connect(sock, res->ai_addr, res->ai_addrlen) < 0 ){
         return 3;
     }
@@ -269,12 +312,16 @@ void sigterm_handler(int signal){
     exit(0);
 }
 
+// it will create proxy socket from client
 int create_socket(int port){
+
+    // server_sock fd
     int server_sock, optval = 1;
     int validfamily = 0;
     struct addrinfo hints, *res = NULL;
     char portstr[12];
 
+    // initializing memory of addrinfo
     memset(&hints, 0x00, sizeof(hints));
     server_sock = -1;
 
@@ -282,6 +329,7 @@ int create_socket(int port){
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
+    // if there is no bind addr from command, it will be ipv6
     if( bind_addr != NULL) {
         if(validfamily = check_ipversion(bind_addr)){
             hints.ai_family = validfamily;
@@ -292,25 +340,31 @@ int create_socket(int port){
         hints.ai_flags |= AI_PASSIVE;
     }
 
+    // init portstr as port
     sprintf(portstr, "%d", port);
 
+    // check addr info for proxy socket
     if( getaddrinfo(bind_addr, portstr, &hints, &res) != 0 ){
         return 1;
     }
 
+    // create a proxy socket from addr
     if((server_sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
         return 2;
     }
 
+    // initialize socket 
     if(setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0){
         return 3;
     }
 
+    // bind socket as addr
     if( bind(server_sock, res->ai_addr, res->ai_addrlen) == -1){
         close(server_sock);
         return 4;
     }
 
+    // listen connection from client
     if( listen(server_sock, BACKLOG) < 0){
         return 5;
     }
