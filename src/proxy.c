@@ -3,11 +3,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <netdb.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <signal.h>
 
 #define BUF_SIZE 16384
+#define LOG_CRIT 1
 
 int parse_options(int argc, char *argv[]);
 int create_connection();
@@ -15,12 +21,17 @@ void server_loop();
 void handle_client(int client_sock, struct sockaddr_storage client_addr);
 void forward_data(int source_sock, int dest_sock);
 void forward_data_ext(int source_sock, int dest_sock, char *cmd);
+void plog(int priority, const char *format, ...);
+int create_socket(int port);
+
+void sigchld_handler(int signal);
+void sigterm_handler(int signal);
 
 char *bind_addr, *remote_host, *cmd_in, *cmd_out;
 int remote_port = 0, server_sock, client_sock, remote_sock;
 int connections_processed = 0;
-bool foreground = FALSE;
-bool use_syslog = FALSE;
+bool foreground = false;
+bool use_syslog = false;
 
 int main(int argc, char *argv[]){
     int local_port;
@@ -35,17 +46,13 @@ int main(int argc, char *argv[]){
         return local_port;
     }
 
-    if( use_syslog ){
-        openlog("proxy", LOG_PID, LOG_DAEMON);
-    }
-
     if( (server_sock = create_socket(local_port)) < 0){
-        plog(LOG_CRIT, "cannot run server: %m");
+        plog(1, "cannot run server: %d", server_sock);
         return server_sock;
     }
 
     signal(SIGCHLD, sigchld_handler);
-    signal(SIGCHLD, sigchld_handler);
+    signal(SIGTERM, sigterm_handler);
 
     if( foreground ){
         server_loop();
@@ -55,16 +62,12 @@ int main(int argc, char *argv[]){
                 server_loop();
                 break;
             case -1:
-                plog(LOG_CRIT, "cannot daemon runing %m");
+                plog(1, "cannot daemon runing");
                 return pid;
             default:
                 close(server_sock);
                 break;
         }
-    }
-
-    if( use_syslog ){
-        closelog();
     }
 
     return EXIT_SUCCESS;
@@ -101,11 +104,11 @@ int parse_options(int argc, char *argv[]){
             break;
 
         case 'f':
-            foreground = TRUE;
+            foreground = true;
             break;
         
         case 's':
-            use_syslog = TRUE;
+            use_syslog = true;
             break;
 
         default:
@@ -140,7 +143,7 @@ void server_loop(){
 void handle_client(int client_sock, struct sockaddr_storage client_addr){
     
     if((remote_sock = create_connection()) < 0 ){
-        plog(LOG_ERR, "Cannot connect to host %m");
+        plog(2, "Cannot connect to host %d", remote_sock);
         goto cleanup;
     }
 
@@ -238,4 +241,81 @@ int check_ipversion(char * addr){
         }
     }
     return 0;
+}
+
+void plog(int priority, const char *format, ...){
+    va_list ap;
+    va_start(ap, format);
+
+    if( use_syslog){
+        vsyslog(priority, format, ap);
+    }else{
+        vfprintf(stderr, format, ap);
+        fprintf(stderr, "\n");
+    }
+
+    va_end(ap);
+}
+
+void sigchld_handler(int signal){
+    while(waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+void sigterm_handler(int signal){
+    close(client_sock);
+    close(server_sock);
+    exit(0);
+}
+
+int create_socket(int port){
+    int server_sock, optval = 1;
+    int validfamily = 0;
+    struct addrinfo hints, *res = NULL;
+    char portstr[12];
+
+    memset(&hints, 0x00, sizeof(hints));
+    server_sock = -1;
+
+    hints.ai_flags = AI_NUMBERICSERV;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if( bind_addr != NULL) {
+        if(validfamily = check_ipversion(bind_addr)){
+            hints.ai_family = validfamily;
+            hints.ai_flags |= AI_NUMERICHOST;
+        }
+    } else{
+        hints.ai_family = AF_INET6;
+        hints.ai_flags |= AI_PASSIVE;
+    }
+
+    sprintf(poststr, "%d", port);
+
+    if( getaddrinfo(bind_addr, portstr, &hints, &res) != 0 ){
+        return CLIENT_RESOLVE_ERROR;
+    }
+
+    if((server_sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
+        return SERVER_SOCKET_ERROR;
+    }
+
+    if(setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0){
+        return SERVER_SETSOCKETOPT_ERROR;
+    }
+
+    if( bind(server_sock, res->ai_addr, res->ai_addrlen) == -1){
+        close(server_sock);
+        return SERVER_BIND_ERROR;
+    }
+
+    if( listen(server_sock, BACKLOG) < 0){
+        return SERVER_LISTEN_ERROR;
+    }
+
+    if( res!= NULL ){
+        freeaddrinfo(res);
+    }
+
+    return server_sock;
 }
