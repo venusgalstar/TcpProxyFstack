@@ -10,7 +10,7 @@ int parse_options(int argc, char *argv[]);
 void server_loop();
 
 char *bind_addr, *remote_host, *cmd_in, *cmd_out;
-int remote_port, server_sock, client_sock;
+int remote_port = 0, server_sock, client_sock, remote_sock;
 int connections_processed = 0;
 bool foreground = FALSE;
 bool use_syslog = FALSE;
@@ -127,4 +127,34 @@ void server_loop(){
         }
         close(client_sock);
     }
+}
+
+void handle_client(int client_sock, struct sockaddr_storage client_addr){
+    
+    if((remote_sock = create_connection()) < 0 ){
+        plog(LOG_ERR, "Cannot connect to host %m");
+        goto cleanup;
+    }
+
+    if( fork() == 0 ){
+        if(cmd_out){
+            forward_data_ext(client_sock, remote_sock, cmd_out);
+        }else{
+            forward_data(client_sock, remote_sock);
+        }
+        exit(0);
+    }
+
+    if( fork() == 0 ){
+        if(cmd_in){
+            forward_data_ext(remote_sock, client_sock, cmd_in);
+        } else{
+            forward_data(remote_sock, client_sock);
+        }
+        exit(0);
+    }
+
+cleanup:
+    close(remote_sock);
+    close(client_sock);
 }
