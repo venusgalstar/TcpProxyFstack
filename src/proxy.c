@@ -7,9 +7,11 @@
 #include <stdarg.h>
 
 int parse_options(int argc, char *argv[]);
+void server_loop();
 
 char *bind_addr, *remote_host, *cmd_in, *cmd_out;
-int remote_port, server_sock;
+int remote_port, server_sock, client_sock;
+int connections_processed = 0;
 bool foreground = FALSE;
 bool use_syslog = FALSE;
 
@@ -102,5 +104,27 @@ int parse_options(int argc, char *argv[]){
         default:
             break;
         }
+    }
+}
+
+void update_connection_count(){
+    
+}
+void server_loop(){
+    struct sockaddr_storage client_addr;
+    socklen_t addrlen = sizeof(client_addr);
+
+    while(1){
+        update_connection_count();
+        client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addrlen);
+
+        if( fork() == 0 ){
+            close(server_sock);
+            handle_client(client_sock, client_addr);
+            exit(0);
+        }else{
+            connections_processed++;
+        }
+        close(client_sock);
     }
 }
