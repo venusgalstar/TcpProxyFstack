@@ -178,3 +178,46 @@ void forward_data(int source_sock, int dest_sock){
     close(source_sock);
 }
 
+void forward_data_ext(int source_sock, int dest_sock, char *cmd){
+    char buffer[BUF_SIZE];
+    int n;
+}
+
+int create_connection(){
+    struct addrinfo hints, *res=NULL;
+    int sock;
+    int validfamily = 0;
+    char portstr[12];
+
+    memset(&hints, 0x00, sizeof(hints));
+    
+    hints.ai_flags = AI_NUMBERICSERV;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    sprintf(poststr, "%d", remote_port);
+
+    if(validfamily = check_ipversion(remote_host)){
+        hints.ai_family = validfamily;
+        hints.ai_flags |= AI_NUMERICHOST;
+    }
+
+    if( getaddrinfo(remote_host, portstr, &hints, &res) != 0 ){
+        errno = EFAULT;
+        return CLIENT_RESOLVE_ERROR;
+    }
+
+    if((sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0 ){
+        return CLIENT_SOCKET_ERROR;
+    }
+
+    if( connect(sock, res->ai_addr, res->ai_addrlen) < 0 ){
+        return CLIENT_CONNECT_ERROR;
+    }
+
+    if( res != NULL ){
+        freeaddrinfo(res);
+    }
+
+    return sock;
+}
