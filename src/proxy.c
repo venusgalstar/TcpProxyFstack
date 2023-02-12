@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#define BUF_SIZE 16384
+
 int parse_options(int argc, char *argv[]);
 void server_loop();
 
@@ -110,6 +112,7 @@ int parse_options(int argc, char *argv[]){
 void update_connection_count(){
     
 }
+
 void server_loop(){
     struct sockaddr_storage client_addr;
     socklen_t addrlen = sizeof(client_addr);
@@ -158,3 +161,20 @@ cleanup:
     close(remote_sock);
     close(client_sock);
 }
+
+void forward_data(int source_sock, int dest_sock){
+    ssize_t n;
+
+    char buffer[BUF_SIZE];
+
+    while((n = recv(source_sock, buffer, BUF_SIZE, 0)) > 0){
+        send(dest_sock, buffer, n, 0);
+    }
+
+    shutdown(dest_sock, SHUT_RDWR);
+    close(dest_sock);
+
+    shutdown(source_sock, SHUT_RDWR);
+    close(source_sock);
+}
+
