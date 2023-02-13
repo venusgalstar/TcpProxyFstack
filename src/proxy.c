@@ -68,8 +68,6 @@ int main(int argc, char *argv[]){
 
     printf("succeed in creating proxy socket\n");
 
-    // return 0;
-
     signal(SIGCHLD, sigchld_handler);
     signal(SIGTERM, sigterm_handler);
 
@@ -96,11 +94,9 @@ int main(int argc, char *argv[]){
 }
 
 // parse parameters from running command, specified by option
-
 int parse_options(int argc, char *argv[]){
+
     int c = 0, local_port = 0;
-    // c = getopt(argc, argv, "b:l:h:p:i:o:f");
-    printf("%d\n", argc);
 
     while((c = getopt(argc, argv, "b:l:h:p:i:o:f")) != -1 ){
         switch (c)
@@ -161,16 +157,15 @@ void server_loop(){
         printf("listenning connection from client\n");
         client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addrlen);
 
-        printf("accepted connection from client\n");
+        struct sockaddr_in *sin = (struct sockaddr_in*)&client_addr;
+        unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
+        printf("accepted connection from client %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
 
         if( fork() == 0 ){
-
-            printf("succed in fork\n");
             close(server_sock);
             handle_client(client_sock, client_addr);
             exit(0);
         }else{
-
             printf("succed in background\n");
             connections_processed++;
         }
