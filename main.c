@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <assert.h>
+#include <sys/ioctl.h>
 
 #include "ff_config.h"
 #include "ff_api.h"
@@ -30,6 +31,17 @@ char local_port = 80;
 int sockClient;
 int sockRemote;
 
+void dumpHex(char* s, int len )
+{
+    int i;
+
+    for(i = 0; i < len; i++){
+	printf("%02x,", s[i]);
+	if(i%16 == 0)
+	    printf("\n");
+    }
+}
+
 int loop(void *arg)
 {
     /* Wait for events to happen */
@@ -47,15 +59,19 @@ int loop(void *arg)
         int ret;
         struct sockaddr_in remote_addr;
 
+	bzero(&remote_addr, sizeof(remote_addr));
+
         remote_addr.sin_family = AF_INET;
         remote_addr.sin_port = htons(remote_port);
-        remote_addr.sin_addr.s_addr = inet_addr(remote_host);
+	inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+//        remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
             /* Simply close socket */
             ff_close(sockClient);
             ff_close(sockRemote);
+//	    printf("socket closed\n");
 
         } else if (clientfd == sockClient) {
 
@@ -84,14 +100,27 @@ int loop(void *arg)
                 available--;
             } while (available);
 
-            if (sockRemote < 0) {
-                printf("ff_socket failed, sockRemote:%d, errno:%d, %s\n", sockRemote, errno, strerror(errno));
-                exit(1);
-            }
+	    int on = 1;
+
+	    sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
+
+	    if( sockRemote < 0 ){
+		printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
+	    }
+
+	    ff_ioctl(sockRemote, FIONBIO, &on);
 
             ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
 
+	    if( ret <0 && errno != EINPROGRESS)
+		printf("remote socket result %d;%s\n", errno, strerror(errno));
+	    else {
+		printf("sucess %d %s\n", errno, strerror(errno));
+	    }
+
             EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
+
+	    assert((kq = ff_kqueue()) > 0);
             /* Update kqueue */
             ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
 
@@ -106,6 +135,7 @@ int loop(void *arg)
                         strerror(errno));
                     ff_close(clientfd);
                 }
+		printf("data from client\n"); dumpHex(buf, readlen);
             }else if( clientfd == sockRemote ){
                 ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
@@ -114,6 +144,7 @@ int loop(void *arg)
                         strerror(errno));
                     ff_close(clientfd);
                 }
+		printf("data from remote\n"); dumpHex(buf, readlen);
             }
         } else {
             printf("unknown event: %8.8X\n", event.flags);
