@@ -46,7 +46,10 @@ int loop(void *arg)
 
         int ret;
         struct sockaddr_in remote_addr;
-        struct addrinfo hints, *res=NULL;
+
+        remote_addr.sin_family = AF_INET;
+        remote_addr.sin_port = htons(remote_port);
+        remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
@@ -86,16 +89,7 @@ int loop(void *arg)
                 exit(1);
             }
 
-            if( getaddrinfo(remote_host, portstr, &hints, &res) != 0 ){
-                printf("ff_socket failed, sockRemote:%d, errno:%d, %s\n", sockRemote, errno, strerror(errno));
-                exit(1);
-            }
-
-            ret = ff_connect(sockRemote, res->ai_addr, res->ai_addrlen);
-
-            if( res != NULL ){
-                freeaddrinfo(res);
-            }
+            ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
 
             EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
             /* Update kqueue */
