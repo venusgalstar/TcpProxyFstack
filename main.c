@@ -35,31 +35,39 @@ int loop(void *arg)
     /* Wait for events to happen */
     unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
     unsigned i;
+    int nSockclient;
 
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
         int clientfd = (int)event.ident;
 
+        int ret;
+        struct sockaddr_in remote_addr;
+        struct addrinfo hints, *res=NULL;
+
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
             /* Simply close socket */
-            ff_close(clientfd);
+            ff_close(sockClient);
+            ff_close(sockRemote);
+
         } else if (clientfd == sockClient) {
 
             int available = (int)event.data;
+
             do {
-                int nclientfd = ff_accept(clientfd, NULL, NULL);
+                nSockclient = ff_accept(clientfd, NULL, NULL);
 
                 printf("new connection was accepted!\n");
 
-                if (nclientfd < 0) {
+                if (nSockclient < 0) {
                     printf("ff_accept failed:%d, %s\n", errno,
                         strerror(errno));
                     break;
                 }
 
                 /* Add to event list */
-                EV_SET(&kevSet, nclientfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+                EV_SET(&kevSet, nSockclient, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
                 if(ff_kevent(kq, &kevSet, 1, NULL, 0, NULL) < 0) {
                     printf("ff_kevent error:%d, %s\n", errno,
@@ -69,6 +77,27 @@ int loop(void *arg)
 
                 available--;
             } while (available);
+
+            if (sockRemote < 0) {
+                printf("ff_socket failed, sockRemote:%d, errno:%d, %s\n", sockRemote, errno, strerror(errno));
+                exit(1);
+            }
+
+            if( getaddrinfo(remote_host, portstr, &hints, &res) != 0 ){
+                printf("ff_socket failed, sockRemote:%d, errno:%d, %s\n", sockRemote, errno, strerror(errno));
+                exit(1);
+            }
+
+            ret = ff_connect(sockRemote, res->ai_addr, res->ai_addrlen);
+
+            if( res != NULL ){
+                freeaddrinfo(res);
+            }
+
+            EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
+            /* Update kqueue */
+            ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
+            
         } else if (event.filter == EVFILT_READ) {
             char buf[256];
             size_t readlen = ff_read(clientfd, buf, sizeof(buf));
