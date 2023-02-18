@@ -22,7 +22,7 @@ struct kevent events[MAX_EVENTS];
 int kq;
 
 /* remote and local configure*/
-char remote_ip[20] = "95.217.33.149";
+char remote_host[20] = "95.217.33.149";
 char remote_port = 80;
 char local_port = 80;
 
@@ -36,6 +36,9 @@ int loop(void *arg)
     unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
     unsigned i;
     int nSockclient;
+    char portstr[20];
+
+    sprintf(portstr, "%d", remote_port);
 
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
@@ -97,14 +100,27 @@ int loop(void *arg)
             EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
             /* Update kqueue */
             ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-            
+
         } else if (event.filter == EVFILT_READ) {
-            char buf[256];
-            size_t readlen = ff_read(clientfd, buf, sizeof(buf));
+            char buf[16384];
 
-            ff_write(clientfd, html, sizeof(html) - 1);
-
-            printf("writing data!\n");
+            if( clientfd == nSockclient ){
+                ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
+                ssize_t writelen = ff_write(sockRemote, buf, readlen);
+                if (writelen < 0){
+                    printf("ff_write failed:%d, %s\n", errno,
+                        strerror(errno));
+                    ff_close(clientfd);
+                }
+            }else if( clientfd == sockRemote ){
+                ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
+                ssize_t writelen = ff_write(nSockclient, buf, readlen);
+                if (writelen < 0){
+                    printf("ff_write failed:%d, %s\n", errno,
+                        strerror(errno));
+                    ff_close(clientfd);
+                }
+            }
         } else {
             printf("unknown event: %8.8X\n", event.flags);
         }
