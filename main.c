@@ -21,9 +21,6 @@ struct kevent events[MAX_EVENTS];
 /* kq */
 int kq;
 int sockfd;
-#ifdef INET6
-int sockfd6;
-#endif
 
 char html[] = 
 "HTTP/1.1 200 OK\r\n"
@@ -71,11 +68,8 @@ int loop(void *arg)
         if (event.flags & EV_EOF) {
             /* Simply close socket */
             ff_close(clientfd);
-#ifdef INET6
-        } else if (clientfd == sockfd || clientfd == sockfd6) {
-#else
         } else if (clientfd == sockfd) {
-#endif
+
             int available = (int)event.data;
             do {
                 int nclientfd = ff_accept(clientfd, NULL, NULL);
@@ -145,35 +139,6 @@ int main(int argc, char * argv[])
     EV_SET(&kevSet, sockfd, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
     /* Update kqueue */
     ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-
-#ifdef INET6
-    sockfd6 = ff_socket(AF_INET6, SOCK_STREAM, 0);
-    if (sockfd6 < 0) {
-        printf("ff_socket failed, sockfd6:%d, errno:%d, %s\n", sockfd6, errno, strerror(errno));
-        exit(1);
-    }
-
-    struct sockaddr_in6 my_addr6;
-    bzero(&my_addr6, sizeof(my_addr6));
-    my_addr6.sin6_family = AF_INET6;
-    my_addr6.sin6_port = htons(80);
-    my_addr6.sin6_addr = in6addr_any;
-
-    ret = ff_bind(sockfd6, (struct linux_sockaddr *)&my_addr6, sizeof(my_addr6));
-    if (ret < 0) {
-        printf("ff_bind failed, sockfd6:%d, errno:%d, %s\n", sockfd6, errno, strerror(errno));
-        exit(1);
-    }
-
-    ret = ff_listen(sockfd6, MAX_EVENTS);
-    if (ret < 0) {
-        printf("ff_listen failed, sockfd6:%d, errno:%d, %s\n", sockfd6, errno, strerror(errno));
-        exit(1);
-    }
-
-    EV_SET(&kevSet, sockfd6, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
-    ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-#endif
 
     ff_run(loop, NULL);
     return 0;
