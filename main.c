@@ -48,22 +48,19 @@ int loop(void *arg)
     unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
     unsigned i;
     int nSockclient;
-    char portstr[20];
+    int ret;
+    struct sockaddr_in remote_addr;
 
-    sprintf(portstr, "%d", remote_port);
+    bzero(&remote_addr, sizeof(remote_addr));
+
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_port = htons(remote_port);
+    inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
 
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
         int clientfd = (int)event.ident;
-
-        int ret;
-        struct sockaddr_in remote_addr;
-
-	bzero(&remote_addr, sizeof(remote_addr));
-
-        remote_addr.sin_family = AF_INET;
-        remote_addr.sin_port = htons(remote_port);
-	    inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+        
 //      remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
         /* Handle disconnect */
@@ -120,9 +117,9 @@ int loop(void *arg)
 
             EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
 
-	        assert((kq = ff_kqueue()) > 0);
-                /* Update kqueue */
-                ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
+	        //assert((kq = ff_kqueue()) > 0);
+            /* Update kqueue */
+            ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
 
         } else if (event.filter == EVFILT_READ) {
             char buf[16384];
