@@ -20,7 +20,6 @@ struct kevent kevSet;
 struct kevent events[MAX_EVENTS];
 /* kq */
 int kq;
-int sockfd;
 
 /* remote and local configure*/
 char remote_ip[20] = "95.217.33.149";
@@ -45,7 +44,7 @@ int loop(void *arg)
         if (event.flags & EV_EOF) {
             /* Simply close socket */
             ff_close(clientfd);
-        } else if (clientfd == sockfd) {
+        } else if (clientfd == sockClient) {
 
             int available = (int)event.data;
             do {
@@ -89,9 +88,9 @@ int main(int argc, char * argv[])
 
     assert((kq = ff_kqueue()) > 0);
 
-    sockfd = ff_socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        printf("ff_socket failed, sockfd:%d, errno:%d, %s\n", sockfd, errno, strerror(errno));
+    sockClient = ff_socket(AF_INET, SOCK_STREAM, 0);
+    if (sockClient < 0) {
+        printf("ff_socket failed, sockClient:%d, errno:%d, %s\n", sockClient, errno, strerror(errno));
         exit(1);
     }
 
@@ -101,19 +100,19 @@ int main(int argc, char * argv[])
     my_addr.sin_port = htons(80);
     my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    int ret = ff_bind(sockfd, (struct linux_sockaddr *)&my_addr, sizeof(my_addr));
+    int ret = ff_bind(sockClient, (struct linux_sockaddr *)&my_addr, sizeof(my_addr));
     if (ret < 0) {
-        printf("ff_bind failed, sockfd:%d, errno:%d, %s\n", sockfd, errno, strerror(errno));
+        printf("ff_bind failed, sockClient:%d, errno:%d, %s\n", sockClient, errno, strerror(errno));
         exit(1);
     }
 
-     ret = ff_listen(sockfd, MAX_EVENTS);
+     ret = ff_listen(sockClient, MAX_EVENTS);
     if (ret < 0) {
-        printf("ff_listen failed, sockfd:%d, errno:%d, %s\n", sockfd, errno, strerror(errno));
+        printf("ff_listen failed, sockClient:%d, errno:%d, %s\n", sockClient, errno, strerror(errno));
         exit(1);
     }
 
-    EV_SET(&kevSet, sockfd, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
+    EV_SET(&kevSet, sockClient, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
     /* Update kqueue */
     ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
 
