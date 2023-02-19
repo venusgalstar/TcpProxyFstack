@@ -36,7 +36,7 @@ void dumpHex(char* s, int len )
     int i;
 
     for(i = 0; i < len; i++){
-	printf("%c,", s[i]);
+	printf("%c", s[i]);
 	if(i%32 == 0)
 	    printf("\n");
     }
@@ -64,8 +64,7 @@ int loop(void *arg)
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
             /* Simply close socket */
-            ff_close(sockClient);
-            ff_close(sockRemote);
+            ff_close(clientfd);
 //	        printf("socket closed\n");
         } else if (clientfd == sockClient) {
 
@@ -93,7 +92,7 @@ int loop(void *arg)
 
                 available--;
             } while (available);
-/*
+
             int on = 1;
 
             sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
@@ -118,7 +117,7 @@ int loop(void *arg)
 	        //assert((kq = ff_kqueue()) > 0);
             // Update kqueue 
             ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-*/
+
         } else if (event.filter == EVFILT_READ) {
             char buf[1024];
 
