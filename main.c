@@ -56,12 +56,11 @@ int loop(void *arg)
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_port = htons(remote_port);
     inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+//  remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
         int clientfd = (int)event.ident;
-        
-//      remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
@@ -69,7 +68,6 @@ int loop(void *arg)
             ff_close(sockClient);
             ff_close(sockRemote);
 //	        printf("socket closed\n");
-
         } else if (clientfd == sockClient) {
 
             int available = (int)event.data;
@@ -77,7 +75,7 @@ int loop(void *arg)
             do {
                 nSockclient = ff_accept(clientfd, NULL, NULL);
 
-                printf("new connection was accepted!\n");
+                printf("new connection was accepted! sock = %d\n", nSockclient);
 
                 if (nSockclient < 0) {
                     printf("ff_accept failed:%d, %s\n", errno,
@@ -96,7 +94,7 @@ int loop(void *arg)
 
                 available--;
             } while (available);
-
+/*
             int on = 1;
 
             sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
@@ -109,41 +107,44 @@ int loop(void *arg)
 
             ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
 
-            if( ret <0 && errno != EINPROGRESS)
+            if( ret <0 && errno != EINPROGRESS){
                 printf("remote socket result %d;%s\n", errno, strerror(errno));
+            }
             else {
                 printf("sucess %d %s\n", errno, strerror(errno));
             }
 
-            EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, MAX_EVENTS, NULL);
+            EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
 	        //assert((kq = ff_kqueue()) > 0);
-            /* Update kqueue */
+            // Update kqueue 
             ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-
+*/
         } else if (event.filter == EVFILT_READ) {
             char buf[1024];
 
-            printf("new data was accepted!\n");
+            printf("new data was accepted! sock = %d\n", clientfd);
+
+            ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
+
+            printf("data from client\n"); 
+            dumpHex(buf, readlen);
 
             if( clientfd == nSockclient ){
-                ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
+                
                 ssize_t writelen = ff_write(sockRemote, buf, readlen);
                 if (writelen < 0){
                     printf("ff_write failed:%d, %s\n", errno,
                         strerror(errno));
                     ff_close(clientfd);
                 }
-                printf("data from client\n"); dumpHex(buf, readlen);
             }else if( clientfd == sockRemote ){
-                ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
                 if (writelen < 0){
                     printf("ff_write failed:%d, %s\n", errno,
                         strerror(errno));
                     ff_close(clientfd);
                 }
-		        printf("data from remote\n"); dumpHex(buf, readlen);
             }
         } else {
             printf("unknown event: %8.8X\n", event.flags);
