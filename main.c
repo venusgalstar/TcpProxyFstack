@@ -36,8 +36,8 @@ void dumpHex(char* s, int len )
     int i;
 
     for(i = 0; i < len; i++){
-	printf("%02x,", s[i]);
-	if(i%16 == 0)
+	printf("%c,", s[i]);
+	if(i%32 == 0)
 	    printf("\n");
     }
 }
@@ -61,7 +61,6 @@ int loop(void *arg)
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
         int clientfd = (int)event.ident;
-
         /* Handle disconnect */
         if (event.flags & EV_EOF) {
             /* Simply close socket */
@@ -107,9 +106,9 @@ int loop(void *arg)
 
             ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
 
-            if( ret <0 && errno != EINPROGRESS){
+            if( ret < 0 && errno != EINPROGRESS){
                 printf("remote socket result %d;%s\n", errno, strerror(errno));
-            }
+            }	    	
             else {
                 printf("sucess %d %s\n", errno, strerror(errno));
             }
