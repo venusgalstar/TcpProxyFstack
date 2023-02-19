@@ -30,6 +30,7 @@ char local_port = 80;
 /* socket for listenning from client and socket for remote access*/
 int sockClient;
 int sockRemote;
+int nSockclient;
 
 void dumpHex(char* s, int len )
 {
@@ -47,7 +48,6 @@ int loop(void *arg)
     /* Wait for events to happen */
     unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
     unsigned i;
-    int nSockclient;
     int ret;
     struct sockaddr_in remote_addr;
 
@@ -109,7 +109,7 @@ int loop(void *arg)
                 printf("remote socket result %d;%s\n", errno, strerror(errno));
             }	    	
             else {
-                printf("sucess %d %s\n", errno, strerror(errno));
+                printf("sucess %d %d %s\n", sockRemote, errno, strerror(errno));
             }
 
             EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, 0, NULL);
@@ -121,7 +121,7 @@ int loop(void *arg)
         } else if (event.filter == EVFILT_READ) {
             char buf[1024];
 
-            printf("new data was accepted! sock = %d\n", clientfd);
+            printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
 
             ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
 
@@ -129,6 +129,7 @@ int loop(void *arg)
             dumpHex(buf, readlen);
 
             if( clientfd == nSockclient ){
+		printf("sending data to remote\n");
                 
                 ssize_t writelen = ff_write(sockRemote, buf, readlen);
                 if (writelen < 0){
