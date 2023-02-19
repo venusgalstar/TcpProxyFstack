@@ -48,22 +48,23 @@ int loop(void *arg)
     unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
     unsigned i;
     int nSockclient;
-    char portstr[20];
+    int ret;
+    struct sockaddr_in remote_addr;
 
-    sprintf(portstr, "%d", remote_port);
-
-    for (i = 0; i < nevents; ++i) {
-        struct kevent event = events[i];
-        int clientfd = (int)event.ident;
-
-        int ret;
-        struct sockaddr_in remote_addr;
-
-	    bzero(&remote_addr, sizeof(remote_addr));
+        bzero(&remote_addr, sizeof(remote_addr));
 
         remote_addr.sin_family = AF_INET;
         remote_addr.sin_port = htons(remote_port);
 	    inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+//      remote_addr.sin_addr.s_addr = inet_addr(remote_host);
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_port = htons(remote_port);
+    inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+
+    for (i = 0; i < nevents; ++i) {
+        struct kevent event = events[i];
+        int clientfd = (int)event.ident;
+        
 //      remote_addr.sin_addr.s_addr = inet_addr(remote_host);
 
         /* Handle disconnect */
@@ -100,13 +101,18 @@ int loop(void *arg)
             } while (available);
 
             int on = 1;
+            int on = 1;
 
             sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
 
             if( sockRemote < 0 ){
                 printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
             }
+            if( sockRemote < 0 ){
+                printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
+            }
 
+            ff_ioctl(sockRemote, FIONBIO, &on);
             ff_ioctl(sockRemote, FIONBIO, &on);
 
             ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
@@ -138,6 +144,7 @@ int loop(void *arg)
                     ff_close(clientfd);
                 }
 		        printf("data from client\n"); dumpHex(buf, readlen);
+                printf("data from client\n"); dumpHex(buf, readlen);
             }else if( clientfd == sockRemote ){
                 ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
