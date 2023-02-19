@@ -122,7 +122,9 @@ int loop(void *arg)
             ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
 
         } else if (event.filter == EVFILT_READ) {
-            char buf[16384];
+            char buf[1024];
+
+            printf("new data was accepted!\n");
 
             if( clientfd == nSockclient ){
                 ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
