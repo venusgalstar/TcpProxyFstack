@@ -23,7 +23,7 @@ struct kevent events[MAX_EVENTS];
 int kq;
 
 /* remote and local configure*/
-char remote_host[20] = "95.217.33.149";
+char remote_host[20] = "facebook.com";
 char remote_port = 80;
 char local_port = 80;
 
