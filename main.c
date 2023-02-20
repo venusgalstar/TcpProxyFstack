@@ -12,6 +12,7 @@
 
 #include "ff_config.h"
 #include "ff_api.h"
+#include "http_parse.h"
 
 #define MAX_EVENTS 512
 
@@ -23,14 +24,13 @@ struct kevent events[MAX_EVENTS];
 int kq;
 
 /* remote and local configure*/
-char remote_host[20] = "95.217.33.149";
-char remote_port = 80;
 char local_port = 80;
 
 /* socket for listenning from client and socket for remote access*/
 int sockClient;
 int sockRemote;
 int nSockclient;
+int newConnectionFlag = 0;
 
 void dumpHex(char* s, int len )
 {
@@ -43,20 +43,50 @@ void dumpHex(char* s, int len )
     }
 }
 
-int loop(void *arg)
-{
-    /* Wait for events to happen */
-    unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
-    unsigned i;
-    int ret;
-    struct sockaddr_in remote_addr;
+int createserverSocket(char* remote_host, int remote_port){
 
+    struct sockaddr_in remote_addr;
+    int on = 1;
+    int ret;
+    
     bzero(&remote_addr, sizeof(remote_addr));
 
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_port = htons(remote_port);
     inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
 //  remote_addr.sin_addr.s_addr = inet_addr(remote_host);
+
+    sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
+
+    if( sockRemote < 0 ){
+        printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
+    }
+
+    ff_ioctl(sockRemote, FIONBIO, &on);
+
+    ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
+
+    if( ret < 0 && errno != EINPROGRESS){
+        printf("remote socket result %d;%s\n", errno, strerror(errno));
+    }	    	
+    else {
+        printf("sucess %d %d %s\n", sockRemote, errno, strerror(errno));
+    }
+
+    EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, 0, NULL);
+
+    //assert((kq = ff_kqueue()) > 0);
+    // Update kqueue 
+    ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
+}
+
+int loop(void *arg)
+{
+    /* Wait for events to happen */
+    unsigned nevents = ff_kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
+    unsigned i;
+    int ret;
+    char buf[4096];
 
     for (i = 0; i < nevents; ++i) {
         struct kevent event = events[i];
@@ -72,6 +102,7 @@ int loop(void *arg)
 
             do {
                 nSockclient = ff_accept(clientfd, NULL, NULL);
+                newConnectionFlag = 1;
 
                 printf("new connection was accepted! sock = %d\n", nSockclient);
 
@@ -93,34 +124,8 @@ int loop(void *arg)
                 available--;
             } while (available);
 
-            int on = 1;
-
-            sockRemote = ff_socket(AF_INET, SOCK_STREAM, 0);
-
-            if( sockRemote < 0 ){
-                printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
-            }
-
-            ff_ioctl(sockRemote, FIONBIO, &on);
-
-            ret = ff_connect(sockRemote, (struct linux_sockaddr*)&remote_addr, sizeof(remote_addr));
-
-            if( ret < 0 && errno != EINPROGRESS){
-                printf("remote socket result %d;%s\n", errno, strerror(errno));
-            }	    	
-            else {
-                printf("sucess %d %d %s\n", sockRemote, errno, strerror(errno));
-            }
-
-            EV_SET(&kevSet, sockRemote, EVFILT_READ, EV_ADD, 0, 0, NULL);
-
-	        //assert((kq = ff_kqueue()) > 0);
-            // Update kqueue 
-            ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
-
         } else if (event.filter == EVFILT_READ) {
-            char buf[1024];
-
+            
             printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
 
             ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
@@ -129,7 +134,26 @@ int loop(void *arg)
             dumpHex(buf, readlen);
 
             if( clientfd == nSockclient ){
-		printf("sending data to remote\n");
+
+                if( newConnectionFlag == 1 ){
+                    struct ParsedRequest *req;
+                    req = ParsedRequest_create();
+                    buf[readlen] = '\0';
+
+                    if (ParsedRequest_parse(req, buf, strlen(buf)) < 0) {		
+                        fprintf (stderr,"Error in request message..only http and get with headers are allowed ! \n");
+                        exit(0);
+                    }
+
+                    if (req->port == NULL)  // if port is not mentioned in URL, we take default as 80 
+                        req->port = (char *) "80";
+
+                    sockRemote = createserverSocket(req->host, atoi(req->port));
+                }
+
+                newConnectionFlag = 0;
+                
+                printf("sending data to remote\n");
                 
                 ssize_t writelen = ff_write(sockRemote, buf, readlen);
                 if (writelen < 0){
@@ -137,6 +161,7 @@ int loop(void *arg)
                         strerror(errno));
                     ff_close(clientfd);
                 }
+
             }else if( clientfd == sockRemote ){
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
                 if (writelen < 0){
