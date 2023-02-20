@@ -148,6 +148,8 @@ int loop(void *arg)
                     if (req->port == NULL)  // if port is not mentioned in URL, we take default as 80 
                         req->port = (char *) "80";
 
+                    printf("to %s:%s", req->host, req->port);
+
                     sockRemote = createserverSocket(req->host, atoi(req->port));
                 }
 
