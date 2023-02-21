@@ -15,6 +15,8 @@
 #include "http_parse.h"
 
 #define MAX_EVENTS 512
+#define RING_BUFFER_SIZE 16
+#define MAX_PAYLOAD 4096
 
 /* kevent set */
 struct kevent kevSet;
@@ -31,6 +33,9 @@ int sockClient;
 int sockRemote;
 int nSockclient;
 int newConnectionFlag = 0;
+
+char bufferToRemote[RING_BUFFER_SIZE][MAX_PAYLOAD];
+int bufferWritePoint = 0, bufferReadPoint = 0;
 
 void dumpHex(char* s, int len )
 {
@@ -62,8 +67,8 @@ int createserverSocket(char* remote_host, int remote_port){
     sock = ff_socket(AF_INET, SOCK_STREAM, 0);
 
     if( sock < 0 ){
-        printf("remote socket error%d %d %s\n", sockRemote, errno, strerror(errno));
-	return -1;
+        printf("remote socket error%d %d %s\n", sock, errno, strerror(errno));
+	    return -1;
     }
 
     ff_ioctl(sock, FIONBIO, &on);
@@ -72,13 +77,13 @@ int createserverSocket(char* remote_host, int remote_port){
 
     if( ret < 0 && errno != EINPROGRESS){
         printf("remote socket result %d;%s\n", errno, strerror(errno));
-	return -1;
+	    return -1;
     }	    	
     else {
         printf("sucess %d %d %s\n", sock, errno, strerror(errno));
     }
 
-    EV_SET(&kevSet, sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
+    EV_SET(&kevSet, sock, EVFILT_READ | EVFILT_WRITE, EV_ADD, 0, 0, NULL);
 
     //assert((kq = ff_kqueue()) > 0);
     // Update kqueue 
@@ -130,6 +135,23 @@ int loop(void *arg)
                 available--;
             } while (available);
 
+        } else if(event.filter == EVFILT_WRITE ){
+
+            if( bufferReadPoint != bufferWritePoint ){
+                
+                printf("sending data to remote\n");
+                
+                ssize_t writelen = ff_write(sockRemote, bufferToRemote[bufferReadPoint], strlen(bufferToRemote[bufferReadPoint]));
+
+                bufferReadPoint = (bufferReadPoint + 1) % RING_BUFFER_SIZE;
+
+                if (writelen < 0){
+                    printf("ff_write failed:%d, %s\n", errno,
+                        strerror(errno));
+                    ff_close(clientfd);
+                }
+            }
+            
         } else if (event.filter == EVFILT_READ) {
             
             printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
@@ -141,11 +163,12 @@ int loop(void *arg)
 
             if( clientfd == nSockclient ){
 
+                buf[readlen] = '\0';
+                
                 if( newConnectionFlag == 1 ){
                     struct ParsedRequest *req;
                     req = ParsedRequest_create();
-                    buf[readlen] = '\0';
-
+                    
                     if (ParsedRequest_parse(req, buf, strlen(buf)) < 0) {		
                         fprintf (stderr,"Error in request message..only http and get with headers are allowed ! \n");
                         exit(0);
@@ -160,15 +183,9 @@ int loop(void *arg)
                 }
 
                 newConnectionFlag = 0;
-                
-                printf("sending data to remote\n");
-                
-                ssize_t writelen = ff_write(sockRemote, buf, readlen);
-                if (writelen < 0){
-                    printf("ff_write failed:%d, %s\n", errno,
-                        strerror(errno));
-                    ff_close(clientfd);
-                }
+
+                memcpy(bufferToRemote[bufferWritePoint], buf, readlen);
+                bufferWritePoint = (bufferWritePoint + 1) % RING_BUFFER_SIZE;
 
             }else if( clientfd == sockRemote ){
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
