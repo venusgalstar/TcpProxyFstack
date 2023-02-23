@@ -83,7 +83,13 @@ int createserverSocket(char* remote_host, int remote_port){
         printf("sucess %d %d %s\n", sock, errno, strerror(errno));
     }
 
-    EV_SET(&kevSet, sock, EVFILT_READ | EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+    EV_SET(&kevSet, sock, EVFILT_WRITE, EV_ADD, 0, MAX_EVENTS, NULL);
+
+    //assert((kq = ff_kqueue()) > 0);
+    // Update kqueue 
+    ff_kevent(kq, &kevSet, 1, NULL, 0, NULL);
+
+    EV_SET(&kevSet, sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
     //assert((kq = ff_kqueue()) > 0);
     // Update kqueue 
@@ -139,27 +145,23 @@ int loop(void *arg)
 
             if( bufferReadPoint != bufferWritePoint ){
                 
-                printf("sending data to remote\n");
+                printf("sending data to remote = %d\n", bufferReadPoint);
                 
                 ssize_t writelen = ff_write(sockRemote, bufferToRemote[bufferReadPoint], strlen(bufferToRemote[bufferReadPoint]));
 
-                bufferReadPoint = (bufferReadPoint + 1) % RING_BUFFER_SIZE;
+//                bufferReadPoint = (bufferReadPoint + 1) % RING_BUFFER_SIZE;
 
                 if (writelen < 0){
                     printf("ff_write failed:%d, %s\n", errno,
                         strerror(errno));
-                    ff_close(clientfd);
-                }
+                }else{
+		    bufferReadPoint = (bufferReadPoint +1) % RING_BUFFER_SIZE;
+		}
             }
             
         } else if (event.filter == EVFILT_READ) {
-            
-            printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
 
             ssize_t readlen = ff_read(clientfd, buf, sizeof(buf));
-
-            printf("data from client\n"); 
-//            dumpHex(buf, readlen);
 
             if( clientfd == nSockclient ){
 
@@ -180,12 +182,16 @@ int loop(void *arg)
                     printf("to %s:%s\n", req->host, req->port);
 
                     sockRemote = createserverSocket(req->host, atoi(req->port));
+
+                    printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
                 }
 
                 newConnectionFlag = 0;
 
                 memcpy(bufferToRemote[bufferWritePoint], buf, readlen);
                 bufferWritePoint = (bufferWritePoint + 1) % RING_BUFFER_SIZE;
+
+                printf("data to write = %d\n", bufferWritePoint);
 
             }else if( clientfd == sockRemote ){
                 ssize_t writelen = ff_write(nSockclient, buf, readlen);
