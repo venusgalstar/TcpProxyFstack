@@ -155,8 +155,8 @@ int loop(void *arg)
                     printf("ff_write failed:%d, %s\n", errno,
                         strerror(errno));
                 }else{
-		    bufferReadPoint = (bufferReadPoint +1) % RING_BUFFER_SIZE;
-		}
+                    bufferReadPoint = (bufferReadPoint +1) % RING_BUFFER_SIZE;
+                }
             }
             
         } else if (event.filter == EVFILT_READ) {
@@ -184,6 +184,10 @@ int loop(void *arg)
                     sockRemote = createserverSocket(req->host, atoi(req->port));
 
                     printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
+
+                    char tmp[200];
+                    int n_bytes = sprintf(tmp, "HTTP/1.1 200 Connection Established \r\n\r\n");
+                    ff_write(nSockclient, tmp, n_bytes);
                 }
 
                 newConnectionFlag = 0;
