@@ -356,6 +356,7 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
      char *saveptr;
      char *index;
      char *currentHeader;
+     int ret;
 
      if (parse->buf != NULL) {
 	  debug("parse object already assigned to a request\n");
@@ -388,6 +389,8 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
      memcpy(parse->buf, tmp_buf, index-tmp_buf);
      parse->buf[index-tmp_buf] = '\0';
 
+     printf("buf = %s\n", parse->buf);
+
      /* Parse request line */
      parse->method = strtok_r(parse->buf, " ", &saveptr);
 
@@ -408,134 +411,22 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 	  return -1;
      }
 
-     full_addr = strtok_r(NULL, " ", &saveptr);
+     printf("method = %s\n", parse->method);
 
-     if (full_addr == NULL) {
-	  debug( "invalid request line, no full address\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
+     /* Copy request line into parse->buf */
+     index = strstr(tmp_buf, "Host:");
+     parse->host = strtok( index + 5, "\r\n");
+
+     printf("host = %s\n", parse->host);
+
+     if( index = strstr(parse->host, ":") ){
+          parse->port = strtok(index + 1, "\r\n");
+          index = strstr(tmp_buf, "Host:");
+          parse->host = strtok( index + 5, ":");
      }
 
-     parse->version = full_addr + strlen(full_addr) + 1;
-
-     if (parse->version == NULL) {
-	  debug( "invalid request line, missing version\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
-     }
-     
-     if (strncmp (parse->version, "HTTP/", 5)) {
-	  debug( "invalid request line, unsupported version %s\n", 
-		 parse->version);
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
-     }
-
-     parse->protocol = strtok_r(full_addr, "://", &saveptr);
-     if (parse->protocol == NULL) {
-	  debug( "invalid request line, missing host\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
-     }
-     
-     const char *rem = full_addr + strlen(parse->protocol) + strlen("://");
-     size_t abs_uri_len = strlen(rem);
-
-     parse->host = strtok_r(NULL, "/", &saveptr);
-     if (parse->host == NULL) {
-	  debug( "invalid request line, missing host\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
-     }
-     
-     if (strlen(parse->host) == abs_uri_len) {
-	  debug("invalid request line, missing absolute path\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  return -1;
-     }
-
-     parse->path = strtok_r(NULL, " ", &saveptr);
-     if (parse->path == NULL) {          // replace empty abs_path with "/"
-	  int rlen = strlen(root_abs_path);
-	  parse->path = (char *)malloc(rlen + 1);
-	  strncpy(parse->path, root_abs_path, rlen + 1);
-     } else if (strncmp(parse->path, root_abs_path, strlen(root_abs_path)) == 0) {
-	  debug("invalid request line, path cannot begin "
-		"with two slash characters\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  parse->buf = NULL;
-	  parse->path = NULL;
-	  return -1;
-     } else {
-	  // copy parse->path, prefix with a slash
-	  char *tmp_path = parse->path;
-	  int rlen = strlen(root_abs_path);
-	  int plen = strlen(parse->path);
-	  parse->path = (char *)malloc(rlen + plen + 1);
-	  strncpy(parse->path, root_abs_path, rlen);
-	  strncpy(parse->path + rlen, tmp_path, plen + 1);
-     }
-
-     parse->host = strtok_r(parse->host, ":", &saveptr);
-     parse->port = strtok_r(NULL, "/", &saveptr);
-
-     if (parse->host == NULL) {
-	  debug( "invalid request line, missing host\n");
-	  free(tmp_buf);
-	  free(parse->buf);
-	  free(parse->path);
-	  parse->buf = NULL;
-	  parse->path = NULL;
-	  return -1;
-     }
-
-     if (parse->port != NULL) {
-	  int port = strtol (parse->port, (char **)NULL, 10);
-	  if (port == 0 && errno == EINVAL) {
-	       debug("invalid request line, bad port: %s\n", parse->port);
-	       free(tmp_buf);
-	       free(parse->buf);
-	       free(parse->path);
-	       parse->buf = NULL;
-	       parse->path = NULL;
-	       return -1;
-	  }
-     }
-
-   
-     /* Parse headers */
-     int ret = 0;
-     currentHeader = strstr(tmp_buf, "\r\n")+2;
-     while (currentHeader[0] != '\0' && 
-	    !(currentHeader[0] == '\r' && currentHeader[1] == '\n')) {
-	  
-	  //debug("line %s %s", parse->version, currentHeader);
-
-	  if (ParsedHeader_parse(parse, currentHeader)) {
-	       ret = -1;
-	       break;
-	  }
-
-	  currentHeader = strstr(currentHeader, "\r\n");
-	  if (currentHeader == NULL || strlen (currentHeader) < 2)
-	       break;
-
-	  currentHeader += 2;
-     }
      free(tmp_buf);
+
      return ret;
 }
 
