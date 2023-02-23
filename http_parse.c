@@ -390,6 +390,7 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 
      /* Parse request line */
      parse->method = strtok_r(parse->buf, " ", &saveptr);
+
      if (parse->method == NULL) {
 	  debug( "invalid request line, no whitespace\n");
 	  free(tmp_buf);
@@ -397,8 +398,9 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 	  parse->buf = NULL;
 	  return -1;
      }
-     if (strcmp (parse->method, "GET")) {
-	  debug( "invalid request line, method not 'GET': %s\n", 
+
+     if (strcmp (parse->method, "GET") && strcmp (parse->method, "CONNECT")) {
+	  debug( "invalid request line, method not 'GET' or 'CONNECT': %s\n", 
 		 parse->method);
 	  free(tmp_buf);
 	  free(parse->buf);
@@ -425,6 +427,7 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 	  parse->buf = NULL;
 	  return -1;
      }
+     
      if (strncmp (parse->version, "HTTP/", 5)) {
 	  debug( "invalid request line, unsupported version %s\n", 
 		 parse->version);
@@ -433,7 +436,6 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 	  parse->buf = NULL;
 	  return -1;
      }
-
 
      parse->protocol = strtok_r(full_addr, "://", &saveptr);
      if (parse->protocol == NULL) {
