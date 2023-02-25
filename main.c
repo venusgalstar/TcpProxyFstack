@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -9,6 +10,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <sys/ioctl.h>
+#include <netdb.h>
 
 #include "ff_config.h"
 #include "ff_api.h"
@@ -48,18 +50,32 @@ void dumpHex(char* s, int len )
     }
 }
 
-int createserverSocket(char* remote_host, int remote_port){
+int createServerSocket(char* remote_host, int remote_port){
 
+    struct addrinfo hints, *res=NULL;
     struct sockaddr_in remote_addr;
     int on = 1;
     int ret;
     int sock;
+
+    // initializing memory
+    memset(&hints, 0x00, sizeof(hints));
+
+    hints.ai_flags = AI_NUMERICSERV;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if( getaddrinfo(remote_host, NULL, &hints, &res) != 0 ){
+        errno = EFAULT;
+        printf("error in getaddrinfo\n");
+        return -1;
+    }
     
     bzero(&remote_addr, sizeof(remote_addr));
 
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_port = htons(remote_port);
-    inet_pton(AF_INET, remote_host, &(remote_addr.sin_addr));
+    memcpy(&(remote_addr.sin_addr), &(res->ai_addr->sa_data), sizeof(remote_addr.sin_addr));
 
     printf("remote_host = %x, remote_port = %d\n", remote_addr.sin_addr.s_addr, remote_port);
 //  remote_addr.sin_addr.s_addr = inet_addr(remote_host);
@@ -81,6 +97,10 @@ int createserverSocket(char* remote_host, int remote_port){
     }	    	
     else {
         printf("sucess %d %d %s\n", sock, errno, strerror(errno));
+    }
+
+    if( res != NULL ){
+        freeaddrinfo(res);
     }
 
     EV_SET(&kevSet, sock, EVFILT_WRITE, EV_ADD, 0, MAX_EVENTS, NULL);
@@ -169,11 +189,12 @@ int loop(void *arg)
                 
                 if( newConnectionFlag == 1 ){
                     struct ParsedRequest *req;
+                    int httpF = HTTP_P;
                     req = ParsedRequest_create();
                     
-                    if (ParsedRequest_parse(req, buf, strlen(buf)) < 0) {		
-                        fprintf (stderr,"Error in request message..only http and get with headers are allowed ! \n");
-                        exit(0);
+                    if (httpF = ParsedRequest_parse(req, buf, strlen(buf)) < 0) {		
+                        fprintf (stderr,"Error in request message. ! \n");
+                        continue;
                     }
 
                     if (req->port == NULL)  // if port is not mentioned in URL, we take default as 80 
@@ -181,13 +202,19 @@ int loop(void *arg)
 
                     printf("to %s:%s\n", req->host, req->port);
 
-                    sockRemote = createserverSocket(req->host, atoi(req->port));
+                    if( sockRemote = createServerSocket(req->host, atoi(req->port)) < 0)
+                    {
+                        printf("error in creating remote socket\n");
+                        continue;
+                    }
 
                     printf("new data was accepted! sock = %d, accepted = %d, remote = %d\n", clientfd, nSockclient,sockRemote);
 
-                    char tmp[200];
-                    int n_bytes = sprintf(tmp, "HTTP/1.1 200 Connection Established \r\n\r\n");
-                    ff_write(nSockclient, tmp, n_bytes);
+                    if( httpF == HTTPS_P ){
+                        char tmp[200];
+                        int n_bytes = sprintf(tmp, "HTTP/1.1 200 Connection Established \r\n\r\n");
+                        ff_write(nSockclient, tmp, n_bytes);
+                    }
                 }
 
                 newConnectionFlag = 0;

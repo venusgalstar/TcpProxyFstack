@@ -16,6 +16,8 @@
 #define PROXY_PARSE
 
 #define DEBUG 1
+#define HTTP_P 1
+#define HTTPS_P 2
 
 /* 
    ParsedRequest objects are created from parsing a buffer containing a HTTP
